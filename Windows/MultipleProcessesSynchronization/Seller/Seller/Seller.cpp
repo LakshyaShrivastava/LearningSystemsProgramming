@@ -5,6 +5,7 @@
 #define BYTES_IN_REQUEST 32
 
 HANDLE hSharedMemLock;
+HANDLE hSellerLock;
 
 typedef struct {
 	int* sharedSeatData;
@@ -23,14 +24,34 @@ DWORD WINAPI BookingThread(LPVOID param);
 int main()
 {
 	printf("main started\n");
-	//hSharedMemLock = OpenSemaphoreA(SEMAPHORE_MODIFY_STATE, false, "sharedMemLock");
-	hSharedMemLock = OpenMutexA(MUTEX_ALL_ACCESS, false, "sharedMemLock");
+	hSharedMemLock = OpenMutexA(MUTEX_ALL_ACCESS, FALSE, "sharedMemLock");
 
 	bookingParams* params = GetSharedMemoryAndEvents();
-	/*if (params == NULL)
+	if (params == NULL)
 	{
 		return EXIT_FAILURE;
-	}*/
+	}
+
+	hSellerLock = OpenMutexA(MUTEX_ALL_ACCESS, FALSE, "sellerLock");
+	if (hSellerLock == NULL)
+	{
+		hSellerLock = CreateMutexA(NULL, FALSE, "sellerLock");
+		if (hSellerLock == NULL)
+		{
+			printf("Failed to make sellerLock.\n");
+			return EXIT_FAILURE;
+		}
+		else
+		{
+			printf("Success creating sellerLock.\n");
+		}
+	}
+	else 
+	{
+		printf("Successfully opened existing sellerLock.\n");
+	}
+
+
 
 	printf("start thread\n");
 	HANDLE bookingThread = CreateThread(NULL, 0, BookingThread, params, NULL, NULL);
@@ -165,6 +186,19 @@ void ResetRequestData(int* request)
 			}
 			printf("Booking %d seats....\n", count);
 		
+			printf("Waiting For seller lock.\n");
+			
+			DWORD waitResult = WaitForSingleObject(hSellerLock, INFINITE);
+			if (waitResult == WAIT_OBJECT_0) 
+			{
+				printf("Acquired seller lock\n");
+			}
+			else
+			{
+				printf("Wait failed, res %d error %d", waitResult, GetLastError());
+			}
+
+
 			WaitForSingleObject(hSharedMemLock, INFINITE);
 			BuildRequest(count, seatsToBook, params->requestData);
 			printf("Request body: ");
@@ -174,7 +208,6 @@ void ResetRequestData(int* request)
 			}
 			printf("\n");
 			SetEvent(params->hEvtOutgoingRequest);
-			//ReleaseSemaphore(hSharedMemLock, 1, NULL);
 			ReleaseMutex(hSharedMemLock);
 			printf("Lock released\n");
 			printf("waiting on response event\n");
@@ -212,8 +245,8 @@ void ResetRequestData(int* request)
 			{
 				printf("Unkown error occured while booking seats.\n");
 			}
-			//ResetRequestData(params->requestData);
-			//ReleaseSemaphore(hSharedMemLock, 1, NULL);
+			ResetRequestData(params->requestData);
 			ReleaseMutex(hSharedMemLock);
+			ReleaseMutex(hSellerLock);
 		}
 	}
