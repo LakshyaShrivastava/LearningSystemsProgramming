@@ -1,0 +1,3 @@
+﻿  backend.cpp
+C:\Users\LakshCPlusPLus\source\repos\TheaterBackend\TheaterBackend\backend.cpp(259,14): warning C4267: 'initializing': conversion from 'size_t' to 'DWORD', possible loss of data
+  TheaterBackend.vcxproj -> C:\Users\LakshCPlusPLus\source\repos\TheaterBackend\x64\Debug\TheaterBackend.exe
