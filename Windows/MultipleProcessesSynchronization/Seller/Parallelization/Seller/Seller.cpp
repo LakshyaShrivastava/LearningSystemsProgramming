@@ -85,7 +85,7 @@ bookingParams* GetSharedMemoryAndEvents()
 		perror("Frontend Error: Could not open memCreatedForSeller");
 		return NULL;
 	}
-	
+
 
 	HANDLE hCreationDataMap = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, "sellerCreationData");
 	int* pCreationData = (int*)MapViewOfFile(hCreationDataMap, FILE_MAP_ALL_ACCESS, 0, 0, BYTES_IN_SELLER_CREATION_DATA);
@@ -106,7 +106,7 @@ bookingParams* GetSharedMemoryAndEvents()
 	char* name = (char*)malloc(length + 1);
 
 	if (name != NULL) {
-		sprintf_s(name, length+1, "seller%d", sellerID);
+		sprintf_s(name, length + 1, "seller%d", sellerID);
 	}
 	else {
 		printf("Memory allocation failed\n");
@@ -143,7 +143,7 @@ bookingParams* GetSharedMemoryAndEvents()
 		perror("Frontend Error: Could not open event responseEvent.\n");
 		return NULL;
 	}
-	
+
 	length = snprintf(NULL, 0, "sellerRequestEvt%d", sellerID);
 	char* requestEvtName = (char*)malloc(length + 1);
 
@@ -195,7 +195,7 @@ void PrintCurrentSeatMap(int* seats)
 void BuildRequest(int count, int* seatsToBook, int* request)
 {
 	int* start = request;
-	
+
 	*request = count;
 	request++;
 	for (int i = 1; i < 7; i++)
@@ -218,93 +218,93 @@ void ResetRequestData(int* request)
 	return;
 }
 
-	DWORD WINAPI BookingThread(LPVOID param)
+DWORD WINAPI BookingThread(LPVOID param)
+{
+	bookingParams* params = (bookingParams*)param;
+	while (true)
 	{
-		bookingParams* params = (bookingParams*)param;
-		while (true)
+		printf("Current Seats Available: \n");
+		PrintCurrentSeatMap(params->sharedSeatData);
+		printf("---------------------------------\n");
+		int count = 0;
+		printf("How many seats would you like to book?(Enter number up to 6)\n");
+		scanf_s("%d", &count);
+
+		int seatsToBook[6] = { 0 };
+		for (int i = 0; i < count; i++)
 		{
-			printf("Current Seats Available: \n");
-			PrintCurrentSeatMap(params->sharedSeatData);
-			printf("---------------------------------\n");
-			int count = 0;
-			printf("How many seats would you like to book?(Enter number up to 6)\n");
-			scanf_s("%d", &count);
-
-			int seatsToBook[6] = { 0 };
-			for (int i = 0; i < count; i++)
-			{
-				printf("Please enter next seat number: ");
-				scanf_s("%d", &seatsToBook[i]);
-			}
-			printf("Booking %d seats....\n", count);
-		
-			/*printf("Waiting For seller lock.\n");
-			
-			DWORD waitResult = WaitForSingleObject(hSellerLock, INFINITE);
-			if (waitResult == WAIT_OBJECT_0) 
-			{
-				printf("Acquired seller lock\n");
-			}
-			else
-			{
-				printf("Wait failed, res %d error %d", waitResult, GetLastError());
-			}*/
-
-			printf("waiting for sharedMemLock\n");
-			DWORD res = WaitForSingleObject(hSharedMemLock, INFINITE);
-			if (res == WAIT_FAILED)
-			{
-				printf("res = %d error = %d\n", res, GetLastError());
-			}
-
-
-			BuildRequest(count, seatsToBook, params->requestData);
-			printf("Request body: ");
-			for (int i = 0; i < 8; i++)
-			{
-				printf("%d ", params->requestData[i]);
-			}
-			printf("\n");
-			SetEvent(params->hEvtOutgoingRequest);
-			ReleaseMutex(hSharedMemLock);
-			printf("Lock released\n");
-			printf("waiting on response event\n");
-			DWORD ret = WaitForSingleObject(params->hEvtIncomingResponse, INFINITE);
-			if (ret == WAIT_OBJECT_0)
-			{
-				printf("Event signalled\n");
-			}
-			else
-			{
-				printf("wait failed ret %d error %d", ret, GetLastError());
-			}
-
-			printf("Waiting for shared mem lock to check the response data\n");
-			ret = WaitForSingleObject(hSharedMemLock, INFINITE);
-
-			if (ret == WAIT_OBJECT_0)
-			{
-				printf("lock signalled\n");
-			}
-			else
-			{
-				printf("wait failed ret %d error %d", ret, GetLastError());
-			}
-
-			if (params->requestData[7] == 2)
-			{
-				printf("Successfully booked all seats.\n");
-			}
-			else if (params->requestData[7] == 1)
-			{
-				printf("Some seats were already booked, please try again.\n");
-			}
-			else
-			{
-				printf("Unkown error occured while booking seats.\n");
-			}
-			ResetRequestData(params->requestData);
-			ReleaseMutex(hSharedMemLock);
-			//ReleaseMutex(hSellerLock);
+			printf("Please enter next seat number: ");
+			scanf_s("%d", &seatsToBook[i]);
 		}
+		printf("Booking %d seats....\n", count);
+
+		/*printf("Waiting For seller lock.\n");
+
+		DWORD waitResult = WaitForSingleObject(hSellerLock, INFINITE);
+		if (waitResult == WAIT_OBJECT_0)
+		{
+			printf("Acquired seller lock\n");
+		}
+		else
+		{
+			printf("Wait failed, res %d error %d", waitResult, GetLastError());
+		}*/
+
+		printf("waiting for sharedMemLock\n");
+		DWORD res = WaitForSingleObject(hSharedMemLock, INFINITE);
+		if (res == WAIT_FAILED)
+		{
+			printf("res = %d error = %d\n", res, GetLastError());
+		}
+
+
+		BuildRequest(count, seatsToBook, params->requestData);
+		printf("Request body: ");
+		for (int i = 0; i < 8; i++)
+		{
+			printf("%d ", params->requestData[i]);
+		}
+		printf("\n");
+		SetEvent(params->hEvtOutgoingRequest);
+		ReleaseMutex(hSharedMemLock);
+		printf("Lock released\n");
+		printf("waiting on response event\n");
+		DWORD ret = WaitForSingleObject(params->hEvtIncomingResponse, INFINITE);
+		if (ret == WAIT_OBJECT_0)
+		{
+			printf("Event signalled\n");
+		}
+		else
+		{
+			printf("wait failed ret %d error %d", ret, GetLastError());
+		}
+
+		printf("Waiting for shared mem lock to check the response data\n");
+		ret = WaitForSingleObject(hSharedMemLock, INFINITE);
+
+		if (ret == WAIT_OBJECT_0)
+		{
+			printf("lock signalled\n");
+		}
+		else
+		{
+			printf("wait failed ret %d error %d", ret, GetLastError());
+		}
+
+		if (params->requestData[7] == 2)
+		{
+			printf("Successfully booked all seats.\n");
+		}
+		else if (params->requestData[7] == 1)
+		{
+			printf("Some seats were already booked, please try again.\n");
+		}
+		else
+		{
+			printf("Unkown error occured while booking seats.\n");
+		}
+		ResetRequestData(params->requestData);
+		ReleaseMutex(hSharedMemLock);
+		//ReleaseMutex(hSellerLock);
 	}
+}

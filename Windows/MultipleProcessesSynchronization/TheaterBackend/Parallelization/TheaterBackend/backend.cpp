@@ -16,6 +16,7 @@ HANDLE hSharedMemLock;
 HANDLE hEvtSellerStarted;
 HANDLE hEvtMemoryCreatedForSeller;
 HANDLE hEvtStartProcessing;
+HANDLE hEvtRefreshData;
 
 int CreateSharedMemory(LPVOID& pDataBuf, LPVOID& pSellerCreationData);
 int CreateSharedEvents(HANDLE& evtRequest, HANDLE& evtResponse);
@@ -76,7 +77,7 @@ int main()
 		perror("Backend Error: could not launch processingThread.\n");
 		return EXIT_FAILURE;
 	}
-	HANDLE threads[] = { sellerInitThread , processingThread};
+	HANDLE threads[] = { sellerInitThread , processingThread };
 	WaitForMultipleObjects(2, threads, TRUE, INFINITE);
 	//free(params);
 	return 0;
@@ -98,7 +99,7 @@ int CreateSharedMemory(LPVOID& pDataBuf, LPVOID& pSellerCreationBuf)
 		perror("Backend Error: could not make view of seatMap memory.\n");
 		return EXIT_FAILURE;
 	}
-	
+
 	// making sellerCreation memory
 	HANDLE hCreationMap = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, BYTES_IN_SELLER_CREATION_DATA, "sellerCreationData");
 	if (hCreationMap == NULL)
@@ -136,7 +137,7 @@ int CreateSharedEvents(HANDLE& evtRequest, HANDLE& evtResponse)
 		printf("failed to create sellerStartedEvent.\n");
 		return EXIT_FAILURE;
 	}
-	else 
+	else
 	{
 		printf("created sellerStartedEvent.\n");
 		printf("Handle value before SetEvent: %p\n", hEvtSellerStarted);
@@ -148,23 +149,24 @@ int CreateSharedEvents(HANDLE& evtRequest, HANDLE& evtResponse)
 		printf("failed to create memCreatedForSeller.\n");
 		return EXIT_FAILURE;
 	}
-	else 
+	else
 	{
 		printf("created memCreatedForSeller.\n");
 		printf("Handle value before SetEvent: %p\n", hEvtMemoryCreatedForSeller);
 	}
 
 	hEvtStartProcessing = CreateEventA(NULL, FALSE, FALSE, "startProcessing");
+	hEvtRefreshData = CreateEventA(NULL, FALSE, FALSE, "refreshData");
 
 	return EXIT_SUCCESS;
 }
 
 int UpdateSharedMemory(LPVOID seatsBuf, LPVOID pReqBuf, int bookingResult)
-{	
+{
 	printf("Updating Shared Memory.\n");
 	memcpy(seatsBuf, seats, BYTES_IN_SEAT_ARR);
 	printf("Updated seats array. New vals:\n");
-	
+
 	int count = 1;
 	int* seats = (int*)seatsBuf;
 	for (int r = 0; r < 6; r++)
@@ -193,7 +195,7 @@ int UpdateSharedMemory(LPVOID seatsBuf, LPVOID pReqBuf, int bookingResult)
 
 	int* request = (int*)pReqBuf;
 	request[7] = bookingResult;
-	
+
 	printf("Request body with return val:");
 	for (int i = 0; i < 8; i++)
 	{
@@ -211,7 +213,7 @@ int bookSeats(int* request)
 	int res = 0;
 
 	printf("Booking %d seats.\n", totalSeats);
-	for (int i = 1; i <= totalSeats+1; i++)
+	for (int i = 1; i <= totalSeats + 1; i++)
 	{
 		res = bookSeat(request[i]);
 		if (res != 0)
@@ -251,10 +253,10 @@ DWORD WINAPI ProcessingThread(LPVOID param)
 		Sleep(100);
 	}*/
 
-	
+
 	while (true)
 	{
-	
+
 		HANDLE* sellerRequestEvtsArr = sellerRequestEvts.data();
 		DWORD size = sellerRequestEvts.size();
 		printf("Backend: Waiting for incoming request.\n");
@@ -265,10 +267,16 @@ DWORD WINAPI ProcessingThread(LPVOID param)
 		}
 
 		int requestIndex = result - WAIT_OBJECT_0;
-		printf("Recieved request from seller %d.\n", requestIndex+1); // +1 bc we started seller numbers at 1 
-		
+		if (requestIndex == 0)
+		{
+			printf("New seller added, refreshing data.\n");
+			continue;
+		}
+
+		printf("Recieved request from seller %d.\n", requestIndex); // +1 bc we started seller numbers at 1 
+
 		printf("Getting the request from its buffer.\n");
-		LPVOID pSellerRequestBuf = sellerRequestBuffers[requestIndex];
+		LPVOID pSellerRequestBuf = sellerRequestBuffers[requestIndex-1];
 		int* request = (int*)pSellerRequestBuf;
 
 		printf("Request body: ");
@@ -287,7 +295,7 @@ DWORD WINAPI ProcessingThread(LPVOID param)
 		int res = bookSeats(request);
 		UpdateSharedMemory(sharedSeatData, request, res);
 		printf("Backend: Setting response event.\n");
-		SetEvent(sellerResponseEvts[requestIndex]);
+		SetEvent(sellerResponseEvts[requestIndex-1]);
 
 		ReleaseMutex(hSharedMemLock);
 		printf("Backend: Released lock.\n");
@@ -297,6 +305,8 @@ DWORD WINAPI ProcessingThread(LPVOID param)
 DWORD WINAPI SellerInitializationThread(LPVOID param)
 {
 	int* returnMemory = (int*)param; 	// define this memory in main
+
+	sellerRequestEvts.push_back(hEvtRefreshData);
 
 	while (true)
 	{
@@ -317,7 +327,7 @@ DWORD WINAPI SellerInitializationThread(LPVOID param)
 			return EXIT_FAILURE;
 		}
 
-		int result = sprintf_s(name,length+1, "seller%d", sellerCount);
+		int result = sprintf_s(name, length + 1, "seller%d", sellerCount);
 		if (result < 0) {
 			printf("sprintf_s failed with error %d\n", result);
 			free(name); // Don't forget to free the allocated memory
@@ -344,7 +354,7 @@ DWORD WINAPI SellerInitializationThread(LPVOID param)
 		char* responseEvtName = (char*)malloc(length + 1);
 
 		if (responseEvtName != NULL) {
-			sprintf_s(responseEvtName, length+1, "sellerResponseEvt%d", sellerCount);
+			sprintf_s(responseEvtName, length + 1, "sellerResponseEvt%d", sellerCount);
 		}
 		else {
 			printf("Memory allocation failed\n");
@@ -354,15 +364,15 @@ DWORD WINAPI SellerInitializationThread(LPVOID param)
 		HANDLE sellerRequestEvent = CreateEventA(NULL, FALSE, FALSE, responseEvtName);
 
 		sellerResponseEvts.push_back(sellerRequestEvent);
-		
+
 		length = snprintf(NULL, 0, "sellerRequestEvt%d", sellerCount);
 		char* requestEvtName = (char*)malloc(length + 1);
 		if (requestEvtName != NULL)
 		{
-			sprintf_s(requestEvtName, length+1, "sellerRequestEvt%d", sellerCount);
+			sprintf_s(requestEvtName, length + 1, "sellerRequestEvt%d", sellerCount);
 			printf("seller requestEvtName: %s\n", requestEvtName);
 		}
-		else 
+		else
 		{
 			printf("Memory allocation failed\n");
 			return EXIT_FAILURE;
@@ -375,5 +385,6 @@ DWORD WINAPI SellerInitializationThread(LPVOID param)
 		sellerCount++;
 		SetEvent(hEvtMemoryCreatedForSeller);
 		SetEvent(hEvtStartProcessing);
+		SetEvent(hEvtRefreshData);
 	}
 }
